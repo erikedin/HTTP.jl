@@ -329,6 +329,28 @@ open(f::Function, method::String, url, headers=Header[]; kw...)::Response =
     request(method, url, headers, nothing; iofunction=f, kw...)
 
 """
+    HTTP.openraw(method, url, [, headers])::Tuple{TCPSocket, Response}
+
+Open a raw socket that is unmanaged by HTTP.jl. Useful for doing HTTP upgrades to other protocols.
+
+```julia
+socket, response = HTTP.openraw("GET", "ws://echo.websocket.org", headers)
+```
+"""
+function openraw(method::String, url, headers=Header[]; kw...)::Tuple{TCPSocket, Response}
+    socketready = Channel{Tuple{TCPSocket, Response}}(0)
+    @async HTTP.open(method, url, headers; kw...) do http
+        HTTP.startread(http)
+        socket = ConnectionPool.getrawstream(http)
+        put!(socketready, (socket, http.message))
+        while(isopen(socket))
+            Base.wait_close(socket)
+        end
+    end
+    take!(socketready)
+end
+
+"""
     HTTP.get(url [, headers]; <keyword arguments>) -> HTTP.Response
 
 Shorthand for `HTTP.request("GET", ...)`. See [`HTTP.request`](@ref).
